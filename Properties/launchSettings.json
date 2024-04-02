@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WordBloom (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "WordBloom (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
