@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "WordBloom (Package)": {
+    "TypeBloom (Package)": {
       "commandName": "MsixPackage"
     },
-    "WordBloom (Unpackaged)": {
+    "TypeBloom (Unpackaged)": {
       "commandName": "Project"
     }
   }

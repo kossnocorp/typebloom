@@ -8,7 +8,7 @@ using Windows.UI.Input.Preview.Injection;
 using System.Linq;
 using System.Text;
 
-namespace WordBloom
+namespace TypeBloom
 {
     internal class Keyboard
     {
