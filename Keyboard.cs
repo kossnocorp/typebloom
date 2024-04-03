@@ -81,11 +81,13 @@ namespace WordBloom
 
         [DllImport("user32.dll")]
         private static extern short VkKeyScan(char ch);
+
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint uCode, uint uMapType);
         #endregion
 
         #region Constants
         private const int WH_KEYBOARD_LL = 13;
-        private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
 
         private const int VK_SHIFT = 0x10;
@@ -111,20 +113,14 @@ namespace WordBloom
         private LowLevelKeyboardProc keyboardProc;
         private IntPtr keyboardHookId = IntPtr.Zero;
 
-        //List<KeyPress> pressedKeys = new List<KeyPress>();
-
         string typedText = "";
 
         static public List<Chord> chords = new List<Chord>
         {
             new Chord { from = "k@", to = "koss@nocorp.me" },
-            new Chord { from = "sdc@", to = "sasha@daisychainai.com" }
+            new Chord { from = "sdc@", to = "sasha@daisychainai.com" },
+            new Chord { from = "--\\", to = "—", }
         };
-
-        static public int maxChordLength = chords.Aggregate(
-            0,
-            (acc, chord) => Math.Max(acc, chord.from.Length)
-        );
 
         KeyPress undoShortcut = new KeyPress
         {
@@ -188,17 +184,23 @@ namespace WordBloom
 
                 var keyPress = new KeyPress { key = key, modifiers = modifiers };
 
+                // Ignore single modifier keys
+                if (
+                    key == VirtualKey.Shift
+                    || key == VirtualKey.Control
+                    || key == VirtualKey.Menu // Alt
+                    || key == VirtualKey.LeftWindows
+                    || key == VirtualKey.RightWindows
+                )
+                    return Next();
+
                 // Process delete
                 if (key == VirtualKey.Back)
                 {
                     if (modifiers.Contains(Modifier.Ctrl) || modifiers.Contains(Modifier.Alt))
                         Reset();
-                    else
-                    {
-                        //pressedKeys.RemoveAt(pressedKeys.Count - 1);
-                        if (typedText.Length > 0)
-                            typedText = typedText.Substring(0, typedText.Length - 1);
-                    }
+                    else if (typedText.Length > 0)
+                        typedText = typedText.Substring(0, typedText.Length - 1);
 
                     return Next();
                 }
@@ -219,22 +221,13 @@ namespace WordBloom
                 nonSupportedModifiers.ExceptWith(supportedModifiers);
                 if (stopKeys.Contains(key) || nonSupportedModifiers.Count > 0)
                 {
-                    Debug.WriteLine("TODO: Unsupported key");
-
                     Reset();
                     return Next();
                 }
 
-                //pressedKeys.Add(keyPress);
                 typedText += PressToString(keyPress);
-                Debug.WriteLine("KEY: " + key);
-                Debug.WriteLine("Typed text: " + typedText + "");
 
                 Update();
-
-                Debug.WriteLine("HOOK CALLBACK");
-                Debug.WriteLine(key);
-                Debug.WriteLine(code);
             }
 
             return Next();
@@ -242,14 +235,11 @@ namespace WordBloom
 
         private void Update()
         {
-            //var tailString = pressedKeys.Aggregate("", (acc, press) => acc + PressToString(press));
-
             var index = chords.FindIndex(chord => typedText.EndsWith(chord.from));
 
             if (index != -1)
             {
                 var toExpand = chords[index];
-                Debug.WriteLine("EXPAND: " + toExpand.to);
                 Expand(toExpand);
             }
         }
@@ -264,67 +254,38 @@ namespace WordBloom
                 injector.InjectKeyboardInput(
                     new[]
                     {
-                        new InjectedInputKeyboardInfo
-                        {
-                            VirtualKey = (ushort)Windows.System.VirtualKey.Back,
-                        }
+                        new InjectedInputKeyboardInfo { VirtualKey = (ushort)VirtualKey.Back, }
                     }
                 );
-                // TODO: Lower that?
-                await Task.Delay(10); // delay to ensure the key is processed
+                await Task.Delay(10);
             }
 
-            // Then type the new word
-            for (int i = 0; i < chord.to.Length; i++)
+            foreach (char c in chord.to)
             {
-                char c = chord.to[i];
-
-                short keyScan = VkKeyScan(c);
-                var key = (ushort)(keyScan & 0xFF);
-                var shiftState = (keyScan >> 8) & 0xFF;
-                var shift = (shiftState & 1) != 0;
-
-                if (shift)
-                {
-                    injector.InjectKeyboardInput(
-                        new[]
+                injector.InjectKeyboardInput(
+                    new[]
+                    {
+                        new InjectedInputKeyboardInfo
                         {
-                            new InjectedInputKeyboardInfo
-                            {
-                                VirtualKey = (ushort)VirtualKey.Shift,
-                                KeyOptions = InjectedInputKeyOptions.None
-                            }
-                        }
-                    );
-                    await Task.Delay(10);
-                }
+                            ScanCode = c,
+                            KeyOptions = InjectedInputKeyOptions.Unicode
+                        },
+                    }
+                );
+                await Task.Delay(10);
 
                 injector.InjectKeyboardInput(
                     new[]
                     {
                         new InjectedInputKeyboardInfo
                         {
-                            VirtualKey = key,
-                            KeyOptions = InjectedInputKeyOptions.None
+                            ScanCode = c,
+                            KeyOptions =
+                                InjectedInputKeyOptions.Unicode | InjectedInputKeyOptions.KeyUp
                         }
                     }
                 );
                 await Task.Delay(10);
-
-                if (shift)
-                {
-                    injector.InjectKeyboardInput(
-                        new[]
-                        {
-                            new InjectedInputKeyboardInfo
-                            {
-                                VirtualKey = (ushort)VirtualKey.Shift,
-                                KeyOptions = InjectedInputKeyOptions.KeyUp
-                            }
-                        }
-                    );
-                    await Task.Delay(10);
-                }
             }
 
             expanding = false;
@@ -334,9 +295,6 @@ namespace WordBloom
 
         private void Reset()
         {
-            //// Reset the pressed keys
-            //pressedKeys.Clear();
-            // Clear in-progress string
             typedText = "";
         }
 
