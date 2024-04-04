@@ -91,6 +91,8 @@ namespace TypeBloom
         private const int WM_KEYUP = 0x0101;
 
         private const int VK_SHIFT = 0x10;
+        private const int VK_LSHIFT = 0xA0;
+        private const int VK_RSHIFT = 0xA1;
         private const int VK_CONTROL = 0x11;
         private const int VK_ALT = 0x12;
         private const int VK_LWIN = 0x5B;
@@ -119,7 +121,11 @@ namespace TypeBloom
         {
             new Chord { from = "k@", to = "koss@nocorp.me" },
             new Chord { from = "sdc@", to = "sasha@daisychainai.com" },
-            new Chord { from = "--\\", to = "—", }
+            new Chord { from = "--\\", to = "—", },
+            new Chord { from = "->\\", to = "→", },
+            new Chord { from = "<-\\", to = "←", },
+            new Chord { from = "-v\\", to = "↓", },
+            new Chord { from = "-^\\", to = "↑", }
         };
 
         KeyPress undoShortcut = new KeyPress
@@ -173,6 +179,10 @@ namespace TypeBloom
 
                 if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
                     modifiers.Add(Modifier.Shift);
+                if ((GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0)
+                    modifiers.Add(Modifier.Shift);
+                if ((GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0)
+                    modifiers.Add(Modifier.Shift);
                 if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
                     modifiers.Add(Modifier.Ctrl);
                 if ((GetAsyncKeyState(VK_ALT) & 0x8000) != 0)
@@ -187,6 +197,8 @@ namespace TypeBloom
                 // Ignore single modifier keys
                 if (
                     key == VirtualKey.Shift
+                    || key == VirtualKey.LeftShift
+                    || key == VirtualKey.RightShift
                     || key == VirtualKey.Control
                     || key == VirtualKey.Menu // Alt
                     || key == VirtualKey.LeftWindows
@@ -225,7 +237,9 @@ namespace TypeBloom
                     return Next();
                 }
 
-                typedText += PressToString(keyPress);
+                var typed = PressToString(keyPress);
+                typedText += typed;
+                Debug.WriteLine("Typed `" + typed + "`, new text buffer: \"" + typedText + "\"");
 
                 Update();
             }
@@ -240,6 +254,7 @@ namespace TypeBloom
             if (index != -1)
             {
                 var toExpand = chords[index];
+                Debug.WriteLine("Expanding chord from \"" + toExpand.from + "\" to \"" + toExpand.to + "\"");
                 Expand(toExpand);
             }
         }
