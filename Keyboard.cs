@@ -125,7 +125,10 @@ namespace TypeBloom
             new Chord { from = "->\\", to = "→", },
             new Chord { from = "<-\\", to = "←", },
             new Chord { from = "-v\\", to = "↓", },
-            new Chord { from = "-^\\", to = "↑", }
+            new Chord { from = "-^\\", to = "↑", },
+            new Chord { from = "v\\\\", to = "✔" },
+            new Chord { from = "x\\\\", to = "❌" },
+            new Chord { from = "...\\", to = "…" },
         };
 
         KeyPress undoShortcut = new KeyPress
@@ -254,7 +257,9 @@ namespace TypeBloom
             if (index != -1)
             {
                 var toExpand = chords[index];
-                Debug.WriteLine("Expanding chord from \"" + toExpand.from + "\" to \"" + toExpand.to + "\"");
+                Debug.WriteLine(
+                    "Expanding chord from \"" + toExpand.from + "\" to \"" + toExpand.to + "\""
+                );
                 Expand(toExpand);
             }
         }
