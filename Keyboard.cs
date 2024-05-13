@@ -28,6 +28,7 @@ namespace TypeBloom
 
         public struct KeyPress
         {
+            public int code;
             public VirtualKey key;
             public HashSet<Modifier> modifiers;
         }
@@ -88,6 +89,7 @@ namespace TypeBloom
 
         #region Constants
         private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
 
         private const int VK_SHIFT = 0x10;
@@ -137,6 +139,8 @@ namespace TypeBloom
             modifiers = new HashSet<Modifier> { Modifier.Ctrl }
         };
 
+        private Dictionary<int, KeyPress> keyPresses = new Dictionary<int, KeyPress>();
+
         private bool expanding = false;
 
         public Keyboard()
@@ -173,78 +177,71 @@ namespace TypeBloom
                 return CallNextHookEx(keyboardHookId, nCode, wParam, lParam);
             };
 
-            if (!expanding && nCode >= 0 && wParam == (IntPtr)WM_KEYUP)
+            if (nCode >= 0)
             {
-                int code = Marshal.ReadInt32(lParam);
-                VirtualKey key = (VirtualKey)code;
+                var code = Marshal.ReadInt32(lParam);
 
-                var modifiers = new HashSet<Modifier>();
-
-                if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Shift);
-                if ((GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Shift);
-                if ((GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Shift);
-                if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Ctrl);
-                if ((GetAsyncKeyState(VK_ALT) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Alt);
-                if ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Win);
-                if ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0)
-                    modifiers.Add(Modifier.Win);
-
-                var keyPress = new KeyPress { key = key, modifiers = modifiers };
-
-                // Ignore single modifier keys
-                if (
-                    key == VirtualKey.Shift
-                    || key == VirtualKey.LeftShift
-                    || key == VirtualKey.RightShift
-                    || key == VirtualKey.Control
-                    || key == VirtualKey.Menu // Alt
-                    || key == VirtualKey.LeftWindows
-                    || key == VirtualKey.RightWindows
-                )
-                    return Next();
-
-                // Process delete
-                if (key == VirtualKey.Back)
+                if (wParam == (IntPtr)WM_KEYDOWN)
                 {
-                    if (modifiers.Contains(Modifier.Ctrl) || modifiers.Contains(Modifier.Alt))
-                        Reset();
-                    else if (typedText.Length > 0)
-                        typedText = typedText.Substring(0, typedText.Length - 1);
-
-                    return Next();
+                    var keyPress = GetKeyPress(code);
+                    if (!keyPresses.ContainsKey(code))
+                        keyPresses.Add(keyPress.code, keyPress);
                 }
-
-                // Process undo
-                var undoPressed =
-                    undoShortcut.key == key && undoShortcut.modifiers.SetEquals(modifiers);
-                if (undoPressed)
+                else if (wParam == (IntPtr)WM_KEYUP && keyPresses.ContainsKey(code))
                 {
-                    Debug.WriteLine("TODO: Process undo");
+                    var keyPress = keyPresses[code];
+                    keyPresses.Remove(code);
 
-                    Reset();
-                    return Next();
+                    if (!expanding && !IsModifierKeyPress(keyPress))
+                    {
+                        // Ignore single modifier keys
+                        if (IsModifierKeyPress(keyPress))
+                            return Next();
+
+                        // Process delete
+                        if (keyPress.key == VirtualKey.Back)
+                        {
+                            if (
+                                keyPress.modifiers.Contains(Modifier.Ctrl)
+                                || keyPress.modifiers.Contains(Modifier.Alt)
+                            )
+                                Reset();
+                            else if (typedText.Length > 0)
+                                typedText = typedText.Substring(0, typedText.Length - 1);
+
+                            return Next();
+                        }
+
+                        // Process undo
+                        var undoPressed =
+                            undoShortcut.key == keyPress.key
+                            && undoShortcut.modifiers.SetEquals(keyPress.modifiers);
+                        if (undoPressed)
+                        {
+                            Debug.WriteLine("TODO: Process undo");
+
+                            Reset();
+                            return Next();
+                        }
+
+                        // If any of the stop keys is pressed, reset the state
+                        var nonSupportedModifiers = new HashSet<Modifier>(keyPress.modifiers);
+                        nonSupportedModifiers.ExceptWith(supportedModifiers);
+                        if (stopKeys.Contains(keyPress.key) || nonSupportedModifiers.Count > 0)
+                        {
+                            Reset();
+                            return Next();
+                        }
+
+                        var typed = PressToString(keyPress);
+                        typedText += typed;
+                        Debug.WriteLine(
+                            "Typed `" + typed + "`, new text buffer: \"" + typedText + "\""
+                        );
+
+                        Update();
+                    }
                 }
-
-                // If any of the stop keys is pressed, reset the state
-                var nonSupportedModifiers = new HashSet<Modifier>(modifiers);
-                nonSupportedModifiers.ExceptWith(supportedModifiers);
-                if (stopKeys.Contains(key) || nonSupportedModifiers.Count > 0)
-                {
-                    Reset();
-                    return Next();
-                }
-
-                var typed = PressToString(keyPress);
-                typedText += typed;
-                Debug.WriteLine("Typed `" + typed + "`, new text buffer: \"" + typedText + "\"");
-
-                Update();
             }
 
             return Next();
@@ -349,6 +346,46 @@ namespace TypeBloom
             ToUnicodeEx(virtualKeyCode, 0, keyState, buffer, buffer.Capacity, 0, layout);
 
             return buffer.ToString();
+        }
+
+        private KeyPress GetKeyPress(int code)
+        {
+            VirtualKey key = (VirtualKey)code;
+
+            var modifiers = new HashSet<Modifier>();
+            if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
+                modifiers.Add(Modifier.Shift);
+            if ((GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0)
+                modifiers.Add(Modifier.Shift);
+            if ((GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0)
+                modifiers.Add(Modifier.Shift);
+            if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
+                modifiers.Add(Modifier.Ctrl);
+            if ((GetAsyncKeyState(VK_ALT) & 0x8000) != 0)
+                modifiers.Add(Modifier.Alt);
+            if ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0)
+                modifiers.Add(Modifier.Win);
+            if ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0)
+                modifiers.Add(Modifier.Win);
+
+            var keyPress = new KeyPress
+            {
+                code = code,
+                key = key,
+                modifiers = modifiers
+            };
+            return keyPress;
+        }
+
+        private bool IsModifierKeyPress(KeyPress keyPress)
+        {
+            return keyPress.key == VirtualKey.Shift
+                || keyPress.key == VirtualKey.LeftShift
+                || keyPress.key == VirtualKey.RightShift
+                || keyPress.key == VirtualKey.Control
+                || keyPress.key == VirtualKey.Menu // Alt
+                || keyPress.key == VirtualKey.LeftWindows
+                || keyPress.key == VirtualKey.RightWindows;
         }
 
         private IntPtr GetLayout()
