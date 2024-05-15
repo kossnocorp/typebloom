@@ -26,6 +26,7 @@ namespace TypeBloom
         {
             if (text.Length == 0)
                 return;
+            keyPresses.RemoveAt(keyPresses.Count - 1);
             text = text.Substring(0, text.Length - 1);
         }
 
