@@ -10,7 +10,7 @@ namespace TypeBloom
     /// </summary>
     public partial class App : Application
     {
-        private Keyboard keyboard;
+        private Controller keyboard;
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -19,7 +19,7 @@ namespace TypeBloom
         public App()
         {
             this.InitializeComponent();
-            keyboard = new Keyboard();
+            keyboard = new Controller();
         }
 
         /// <summary>
