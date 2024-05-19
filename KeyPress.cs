@@ -63,7 +63,7 @@ namespace TypeBloom
             IntPtr dwhkl
         );
 
-        public static KeyPress FromCode(int code)
+        public static KeyPress CaptureCode(int code)
         {
             VirtualKey key = (VirtualKey)code;
 
@@ -94,5 +94,61 @@ namespace TypeBloom
 
         [DllImport("user32.dll")]
         static extern short GetAsyncKeyState(int vKey);
+
+        public static KeyPress FromCode(VirtualKey code)
+        {
+            return FromCode((int)code, new HashSet<KeyModifier>());
+        }
+
+        public static KeyPress FromCode(int code)
+        {
+            return FromCode(code, new HashSet<KeyModifier>());
+        }
+
+        public static KeyPress FromCode(int code, HashSet<KeyModifier> modifiers)
+        {
+            var keyPress = new KeyPress
+            {
+                code = code,
+                key = (VirtualKey)code,
+                modifiers = modifiers
+            };
+            return keyPress;
+        }
+
+        public static KeyPress FromUnicode(string str)
+        {
+            return FromUnicode(str, new HashSet<KeyModifier>());
+        }
+
+        public static KeyPress FromUnicode(string str, HashSet<KeyModifier> modifiers)
+        {
+            short result = VkKeyScan(str[0]);
+            int code = result & 0xff;
+
+            return FromCode(code, modifiers);
+        }
+
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern short VkKeyScan(char ch);
+
+        public static VirtualKey ModifierToKey(KeyModifier modifier)
+        {
+            switch (modifier)
+            {
+                case KeyModifier.Shift:
+                    return VirtualKey.Shift;
+                case KeyModifier.Ctrl:
+                    return VirtualKey.Control;
+                case KeyModifier.Alt:
+                    return VirtualKey.Menu;
+                case KeyModifier.Win:
+                    return VirtualKey.LeftWindows;
+            }
+            return VirtualKey.None;
+        }
     }
 }

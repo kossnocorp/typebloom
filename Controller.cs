@@ -11,12 +11,19 @@ namespace TypeBloom
 {
     internal class Controller
     {
-        static int keyboardDelay = 10;
+        static int keyboardDelay = 1;
 
         public struct Snippet
         {
             public string to;
             public string from;
+        }
+
+        public struct Macro
+        {
+            public string app;
+            public KeyPress key;
+            public KeyPress[] sequence;
         }
 
         #region DLL imports
@@ -90,6 +97,19 @@ namespace TypeBloom
             new Snippet { from = "...\\", to = "…" },
         };
 
+        static public List<Macro> macros = new List<Macro>
+        {
+            new Macro
+            {
+                app = "Code",
+                key = KeyPress.FromCode(VirtualKey.F15),
+                sequence = new KeyPress[]
+                {
+                    KeyPress.FromCode(192, new HashSet<KeyModifier> { KeyModifier.Ctrl }), // ctrl-`
+                }
+            }
+        };
+
         KeyPress undoShortcut = new KeyPress
         {
             key = VirtualKey.Z,
@@ -148,7 +168,7 @@ namespace TypeBloom
 
                 if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
                 {
-                    var keyPress = KeyPress.FromCode(code);
+                    var keyPress = KeyPress.CaptureCode(code);
                     if (!keyPresses.ContainsKey(code))
                         keyPresses.Add(keyPress.code, keyPress);
                 }
@@ -171,6 +191,20 @@ namespace TypeBloom
 
                     if (!expanding && !IsModifierKeyPress(keyPress))
                     {
+                        // Process macros
+                        var macro = macros.Find(macro => keyPress.Equals(macro.key));
+                        if (!macro.Equals(default(Macro)))
+                        {
+                            Debug.WriteLine("Executing macro for key " + macro.key.ToUnicode());
+
+                            var app = OS.GetFocusedName();
+                            if (macro.app == app)
+                            {
+                                RunMacro(macro);
+                                return Next();
+                            }
+                        }
+
                         // Process delete
                         if (keyPress.key == VirtualKey.Back)
                         {
@@ -391,6 +425,56 @@ namespace TypeBloom
             buffer.Reset();
 
             expanding = false;
+        }
+
+        private async void RunMacro(Macro macro)
+        {
+            var injector = InputInjector.TryCreate();
+
+            foreach (var keyPress in macro.sequence)
+            {
+                foreach (var modifier in keyPress.modifiers.ToList())
+                {
+                    injector.InjectKeyboardInput(
+                        new[]
+                        {
+                            new InjectedInputKeyboardInfo
+                            {
+                                VirtualKey = (ushort)KeyPress.ModifierToKey(modifier),
+                                KeyOptions = InjectedInputKeyOptions.None
+                            },
+                        }
+                    );
+                    await Task.Delay(keyboardDelay);
+                }
+
+                injector.InjectKeyboardInput(
+                    new[]
+                    {
+                        new InjectedInputKeyboardInfo
+                        {
+                            VirtualKey = (ushort)keyPress.key,
+                            KeyOptions = InjectedInputKeyOptions.None
+                        },
+                    }
+                );
+                await Task.Delay(keyboardDelay);
+
+                foreach (var modifier in keyPress.modifiers.ToList())
+                {
+                    injector.InjectKeyboardInput(
+                        new[]
+                        {
+                            new InjectedInputKeyboardInfo
+                            {
+                                VirtualKey = (ushort)KeyPress.ModifierToKey(modifier),
+                                KeyOptions = InjectedInputKeyOptions.KeyUp
+                            },
+                        }
+                    );
+                    await Task.Delay(keyboardDelay);
+                }
+            }
         }
 
         private bool IsModifierKeyPress(KeyPress keyPress)
